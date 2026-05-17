@@ -1,55 +1,140 @@
 # Movies2GSheets
 
-Script em python para enviar ao Google Sheets uma relação atualizada dos filmes backupeados
+Utilitário Python que varre pastas locais de vídeos, coleta metadados de cada arquivo e os sincroniza com uma planilha Google Sheets via Google Apps Script — evitando duplicatas a cada execução.
 
-# AtualizaListaFilmes
-
-Este projeto contém um script Python para escanear pastas de filmes locais, coletar metadados relevantes e atualizar uma planilha do Google Sheets via um Web App do Google Apps Script.
-
-## Objetivo
-
-O script procura arquivos de vídeo em diretórios configurados, extrai informações sobre resolução, codec, tamanho e data de modificação, e gera uma assinatura rápida para cada arquivo. Em seguida, ele consulta uma planilha existente para evitar duplicações e envia apenas os filmes novos.
+---
 
 ## Como funciona
 
-- `VIDEO_PATHS`: lista de diretórios locais onde os vídeos são pesquisados.
-- `ALLOWED_EXTENSIONS`: tipos de arquivo de vídeo considerados válidos (`mkv`, `mp4`, `mkv3d`, `avi`).
-- `WEB_APP_URL`: URL do Web App do Google Apps Script que recebe os dados.
-- `procura_arquivos_video()`: varre os diretórios definidos e coleta caminhos de arquivos suportados.
-- `coleta_dados_video()`: usa `ffprobe` para extrair resolução e codec e coleta metadados do arquivo.
-- `gerar_assinatura_video()`: cria um hash rápido usando o primeiro e último megabyte do arquivo, além do tamanho total, para identificar vídeos.
-- `buscar_filmes_na_planilha()`: baixa os hashes existentes da planilha para comparação.
-- `inserir_dados_na_planilha()`: envia os novos registros via POST para o Web App.
+```
+Pastas locais (D:\Filmes, Y:\Filmes…)
+        │
+        ▼
+  Varredura recursiva
+  (os.walk + extensões permitidas)
+        │
+        ▼
+  Coleta de metadados por arquivo
+  (tamanho, data, resolução, codec, hash)
+        │
+        ▼
+  Consulta à planilha (GET)
+  ← lista de hashes já cadastrados
+        │
+        ▼
+  Filtra apenas arquivos novos
+        │
+        ▼
+  Envia novos registros (POST)
+  → Google Sheets via Apps Script
+```
 
-## Requisitos
+A planilha funciona como banco de dados leve: o script nunca recadastra um arquivo que já está lá.
 
-- Python 3.x
-- `ffprobe` disponível no PATH (parte do FFmpeg)
+---
+
+## Pré-requisitos
+
+- Python 3.10 ou superior (usa `match` e `os.walk` com type hints)
+- `ffprobe` instalado e disponível no PATH (parte do pacote [FFmpeg](https://ffmpeg.org/download.html))
+- Uma planilha Google Sheets com um Web App publicado via Google Apps Script (veja a seção abaixo)
+
+---
 
 ## Configuração
 
-1. Altere `VIDEO_PATHS` para os diretórios onde seus filmes estão armazenados.
-2. Ajuste `WEB_APP_URL` para a URL de execução do seu Web App do Google Apps Script.
-3. Verifique se os arquivos de vídeo usam extensões suportadas.
+Edite as constantes no topo do script:
+
+```python
+# Caminhos das pastas a varrer
+VIDEO_PATHS = ['D:\\Filmes', 'D:\\Filmes 3D', 'D:\\Filmes 4K', 'Y:\\Filmes']
+
+# URL do Web App publicado no Google Apps Script
+WEB_APP_URL = 'https://script.google.com/macros/s/<SEU_ID>/exec'
+
+# Extensões de vídeo reconhecidas
+ALLOWED_EXTENSIONS = {'mkv', 'mp4', 'mkv3d', 'avi'}
+```
+
+---
+
+## Google Apps Script
+
+O script se comunica com a planilha através de um Web App publicado no Google Apps Script. O endpoint precisa suportar dois métodos:
+
+| Método | Comportamento esperado |
+|--------|----------------------|
+| `GET`  | Retorna um array JSON com todos os hashes já cadastrados na planilha |
+| `POST` | Recebe `{ "values": [[...], [...]] }` e insere as linhas na planilha |
+
+### Colunas gravadas na planilha
+
+| # | Campo | Descrição |
+|---|-------|-----------|
+| 1 | Nome | Nome do arquivo |
+| 2 | Tamanho | Tamanho legível (ex: `12.34 GB`) |
+| 3 | Resolução | Label de qualidade (`SD`, `HD`, `FHD`, `QHD`, `4K`) |
+| 4 | Resolução exata | Dimensões reais em pixels (ex: `3840x2160`) |
+| 5 | Codec | Codec do stream de vídeo (ex: `hevc`, `h264`) |
+| 6 | Tamanho (bytes) | Valor numérico bruto para ordenação precisa |
+| 7 | Data | Data de modificação do arquivo (`YYYY-MM-DD HH:MM:SS`) |
+| 8 | Hash | Assinatura MD5 do arquivo (chave de deduplicação) |
+| 9 | Caminho | Caminho completo no sistema de arquivos |
+
+---
+
+## Funcionamento interno
+
+### Deduplicação por hash
+
+Cada arquivo recebe uma assinatura MD5 calculada a partir do tamanho e dos conteúdos do arquivo. Antes do envio, o script busca todos os hashes já cadastrados na planilha e filtra apenas os arquivos ausentes.
+
+### Fast Hash
+
+Para evitar leitura completa de arquivos grandes (que podem ter dezenas de GB), o hash é calculado lendo apenas:
+
+- o **primeiro 1 MB** do arquivo
+- o **último 1 MB** do arquivo
+- o **tamanho total** em bytes (incluso no hash)
+
+Arquivos menores que 2 MB passam por hash completo. Arquivos corrompidos ou inacessíveis usam o caminho como fallback.
+
+### Classificação de resolução
+
+A resolução é classificada pela **maior dimensão** do vídeo (largura ou altura), o que torna a lógica imune ao letterboxing (barras pretas que reduzem a altura real):
+
+| Maior dimensão | Label |
+|---------------|-------|
+| ≥ 3840 px | `4K` |
+| ≥ 2560 px | `QHD` |
+| ≥ 1920 px | `FHD` |
+| ≥ 1280 px | `HD` |
+| > 0 px | `SD` |
+
+Os tiers são definidos na constante `RESOLUTION_TIERS` — adicionar suporte a `8K`, por exemplo, é só incluir `(7680, '8K')` no início da lista.
+
+---
 
 ## Uso
 
-Execute o script diretamente com Python:
-
 ```bash
-python AtualizaListaFilmes.py
+python main.py
 ```
 
-O script exibirá o progresso no console e informará se encontrou novos vídeos para enviar.
+Saída esperada:
 
-## Pontos principais
+```
+Iniciando varredura...
+Processando metadados e gerando hashes de 312 arquivos...
+Consultando planilha para evitar duplicidade...
+Enviando 5 novos vídeos para a planilha...
+Processamento concluído com sucesso.
+```
 
-- Evita duplicidade usando hashes armazenados na planilha.
-- Classifica automaticamente a resolução como `4K`, `QHD`, `FHD`, `HD` ou `SD`.
-- Usa `ffprobe` para extrair informações de vídeo de forma eficiente.
-- Envia apenas novos registros, fazendo o processo mais rápido e seguro.
+---
 
-## Observações
+## Extensões suportadas
 
-- O script trabalha melhor em ambientes Windows, mas pode ser adaptado para outros sistemas desde que `ffprobe` esteja disponível e os caminhos sejam ajustados.
-- Se `ffprobe` falhar para algum arquivo, o script continuará processando os demais.
+`mkv` · `mp4` · `mkv3d` · `avi`
+
+Para adicionar novas extensões, edite `ALLOWED_EXTENSIONS` no topo do script.
