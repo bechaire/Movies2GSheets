@@ -1,0 +1,24 @@
+function doGet(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  // Pega os dados da Coluna H (onde está o Hash)
+  var data = sheet.getRange("H:H").getValues();
+  
+  // Extrai apenas os hashes, ignorando vazios e o cabeçalho
+  var hashes = data.map(function(row) { return row[0]; }).filter(String);
+  
+  return ContentService.createTextOutput(JSON.stringify(hashes))
+                       .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var data = JSON.parse(e.postData.contents);
+  
+  if (data && data.values && data.values.length > 0) {
+    var startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, data.values.length, data.values[0].length).setValues(data.values);
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({"status": "sucesso"}))
+                       .setMimeType(ContentService.MimeType.JSON);
+}
