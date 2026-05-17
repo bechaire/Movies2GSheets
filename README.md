@@ -60,12 +60,37 @@ ALLOWED_EXTENSIONS = {'mkv', 'mp4', 'mkv3d', 'avi'}
 
 ## Google Apps Script
 
-O script se comunica com a planilha através de um Web App publicado no Google Apps Script. O endpoint precisa suportar dois métodos:
+O script `appscript.ghs` se comunica com a planilha através de um Web App publicado no Google Apps Script. O endpoint precisa suportar dois métodos:
 
 | Método | Comportamento esperado |
 |--------|----------------------|
 | `GET`  | Retorna um array JSON com todos os hashes já cadastrados na planilha |
 | `POST` | Recebe `{ "values": [[...], [...]] }` e insere as linhas na planilha |
+
+### 1. Criar o projeto Apps Script a partir da planilha
+  - Abra a planilha no Google Sheets.
+  - No menu, acesse: **Extensões → Apps Script**.
+  - Um novo projeto será criado automaticamente e vinculado a esta planilha.
+  - Dê um nome ao projeto.
+  - Copie o conteúdo de `appscript.ghs` para lá e implante um app web.
+
+### 2. Fazer o deploy como Web App
+  - No novo editor: `Deploy` → `New deployment`.
+  - Em `Select type` escolha **Web app**.
+  - Em `Description` coloque um rótulo (ex.: "v1 - lançamento inicial").
+  - Em `Execute as` selecione **Me** (o script executa com suas credenciais) ou escolha conforme a necessidade.
+  - Em `Who has access` selecione **Anyone** (O hash é grande).
+  - Clique em `Deploy` e siga as instruções para conceder permissões; copie a URL do Web App.
+
+### Atualizar o script e criar novas versões
+  - O Web App deployado usa uma versão do código (snapshot). Alterações no editor NÃO afetam automaticamente uma implantação existente até que você publique uma nova versão e atualize o deployment.
+
+#### Passos para criar nova versão e redeploy:
+  - No editor Apps Script, vá em `File` → `Manage versions...` (ou `Versions` no novo editor) e clique em `Save New Version` colocando uma descrição curta (ex.: "Correção X").
+  - Depois vá em `Deploy` → `Manage deployments` → selecione a implantação do tipo **Web app** → `Edit`.
+  - Na edição da implantação escolha a versão recém-criada (ou selecione a opção para usar a última versão, se disponível) e salve/atualize.
+  - Clique em `Redeploy` (ou `Update`) — o URL do Web App se mantém, mas passa a servir o novo código.
+  - Observação rápida: sempre anote a descrição da versão para rastreabilidade e use números/labels claros (ex.: `v2 - correção de X`).
 
 ### Colunas gravadas na planilha
 
